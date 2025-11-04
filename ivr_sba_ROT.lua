@@ -1,8 +1,8 @@
 --========================================================--
 --  IVR SBA - Standard Bank Angola
 --  Autor: José Tomás & GPT
---  Data: 2025-11-04 (Corrigido para erro de arquivo fechado + otimizações para TTS completo)
---  Função: Roteamento inteligente de chamadas SBA com TTS completo
+--  Data: 2025-11-04 (Corrigido para TTS completo e timing de áudio)
+--  Função: Roteamento inteligente de chamadas SBA com TTS integral
 --========================================================--
 
 package.path  = package.path .. ";/usr/share/lua/5.2/?.lua;/usr/local/share/lua/5.2/?.lua"
@@ -36,9 +36,8 @@ local function log(session, msg)
     if f then f:write(line) f:close() end
 end
 
---== Função TTS: gera WAV, converte para 8kHz mono e garante arquivo completo ==--
+--== Função TTS: gera WAV 8kHz mono e garante arquivo completo ==--
 local function tts(texto, session)
-    local start_time = os.time()  -- Para medir tempo de geração
     local output_raw = "/tmp/tts_sba_" .. os.time() .. "_" .. math.random(1000,9999) .. "_raw.wav"
     local output_8k  = output_raw:gsub("_raw", "_8k")
     local body = json.encode({texto = texto, lang = "pt-PT"})
@@ -60,34 +59,24 @@ local function tts(texto, session)
         sink = ltn12.sink.file(f)
     }
 
-    -- Fecha o arquivo raw sempre, com verificação de erro para evitar "closed file"
-    local close_ok, close_err = pcall(function() f:close() end)
-    if not close_ok then
-        log(session, "Erro ao fechar arquivo raw: " .. tostring(close_err))
-    end
+    pcall(function() f:close() end)
 
     if code ~= 200 then 
         log(session, "Erro na API TTS: código " .. tostring(code))
-        os.remove(output_raw)  -- Limpa arquivo raw em caso de erro
+        os.remove(output_raw)
         return nil 
     end
 
-    -- Converte para 8kHz mono com verificação de sucesso e opções para reduzir latência
     local ffmpeg_cmd = "ffmpeg -y -i " .. output_raw .. " -ar 8000 -ac 1 -f wav " .. output_8k .. " 2>/dev/null"
-    local success = os.execute(ffmpeg_cmd)  -- Aguarda término e verifica sucesso
-    os.remove(output_raw)  -- Remove arquivo raw após conversão
+    local success = os.execute(ffmpeg_cmd)
+    os.remove(output_raw)
 
     if not success or not io.open(output_8k, "rb") then
         log(session, "Erro na conversão ffmpeg ou arquivo 8k não criado")
         return nil
     end
 
-    -- Verifica integridade: tamanho mínimo para um WAV válido (ex.: > 100 bytes para evitar arquivos vazios/corrompidos)
     local file_handle = io.open(output_8k, "rb")
-    if not file_handle then
-        log(session, "Erro ao abrir arquivo 8k para verificação")
-        return nil
-    end
     local file_size = file_handle:seek("end")
     file_handle:close()
     if file_size < 100 then
@@ -96,15 +85,12 @@ local function tts(texto, session)
         return nil
     end
 
-    local end_time = os.time()
-    log(session, "TTS gerado com sucesso: " .. output_8k .. " (tamanho: " .. tostring(file_size) .. " bytes, tempo: " .. tostring(end_time - start_time) .. "s)")
-
+    log(session, "TTS gerado com sucesso: " .. output_8k .. " (tamanho: " .. tostring(file_size) .. " bytes)")
     return output_8k
 end
 
---== Limpa arquivos temporários ==--
+--== Limpeza de arquivos temporários ==--
 local function limpar_temp()
-    -- Usa os.remove para limpeza mais segura
     for file in io.popen("ls " .. TMP_PATTERN .. " 2>/dev/null"):lines() do
         os.remove(file)
     end
@@ -116,8 +102,22 @@ end
 
 if not session or not session:ready() then return end
 
+-- Atende a chamada e aguarda canal READY
+session:answer()
+while not session:ready() do
+    freeswitch.msleep(50)
+end
+
 local numero = session:getVariable("caller_id_number") or "desconhecido"
 log(session, "Nova chamada recebida de " .. numero)
+
+--== TTS inicial de acolhimento ==--
+
+if bem_vindo then
+    freeswitch.msleep(700)  -- delay para garantir buffer do FreeSWITCH
+    session:streamFile(bem_vindo)
+    os.remove(bem_vindo)
+end
 
 --== Consulta API SBA ==--
 local resposta = {}
@@ -155,11 +155,9 @@ log(session, "Cliente reconhecido: " .. nome .. " → gestor " .. gestor .. " (e
 if data.message and session:ready() then
     local caminho_audio = tts(data.message, session)
     if caminho_audio then
-        -- Pequeno delay para garantir que o arquivo esteja "pronto" no FS (evita buffer inicial)
-        os.execute("sleep 0.2")  -- Ajuste se necessário (0.1-0.5s)
-        log(session, "Reproduzindo áudio TTS completo: " .. caminho_audio)
-        session:streamFile(caminho_audio)  -- Ou use session:execute("playback", caminho_audio) se streamFile ainda cortar
-        os.remove(caminho_audio)  -- Remove imediatamente após reprodução para evitar acúmulo
+        freeswitch.msleep(700)  -- delay antes do playback
+        session:streamFile(caminho_audio)
+        os.remove(caminho_audio)
     else
         log(session, "Falha ao gerar TTS para mensagem do gestor.")
     end
