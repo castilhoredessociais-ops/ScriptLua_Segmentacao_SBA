@@ -1,7 +1,11 @@
 --========================================================--
 --  IVR SBA - Standard Bank Angola
 --  Autor: José Tomás & GPT
+<<<<<<< HEAD
 --  Data: 2025-11-04 (Corrigido para TTS completo, timing de áudio e roteamento por dígitos)
+=======
+--  Data: 2025-11-04 (Corrigido para TTS completo e timing de áudio)
+>>>>>>> d7e2feac7ae7a90e32a0d9d2f7bdb4e83d3ebaf9
 --  Função: Roteamento inteligente de chamadas SBA com TTS integral
 --========================================================--
 
@@ -103,6 +107,10 @@ end
 
 if not session or not session:ready() then return end
 
+<<<<<<< HEAD
+=======
+-- Atende a chamada e aguarda canal READY
+>>>>>>> d7e2feac7ae7a90e32a0d9d2f7bdb4e83d3ebaf9
 session:answer()
 while not session:ready() do
     freeswitch.msleep(50)
@@ -110,6 +118,14 @@ end
 
 local numero = session:getVariable("caller_id_number") or "desconhecido"
 log(session, "Nova chamada recebida de " .. numero)
+
+--== TTS inicial de acolhimento ==--
+
+if bem_vindo then
+    freeswitch.msleep(700)  -- delay para garantir buffer do FreeSWITCH
+    session:streamFile(bem_vindo)
+    os.remove(bem_vindo)
+end
 
 --== Consulta API SBA ==--
 local resposta = {}
@@ -147,7 +163,11 @@ log(session, "Cliente reconhecido: " .. nome .. " → gestor " .. gestor .. " (e
 if data.message and session:ready() then
     local caminho_audio = tts(data.message, session)
     if caminho_audio then
+<<<<<<< HEAD
         freeswitch.msleep(700)
+=======
+        freeswitch.msleep(700)  -- delay antes do playback
+>>>>>>> d7e2feac7ae7a90e32a0d9d2f7bdb4e83d3ebaf9
         session:streamFile(caminho_audio)
         os.remove(caminho_audio)
     else
