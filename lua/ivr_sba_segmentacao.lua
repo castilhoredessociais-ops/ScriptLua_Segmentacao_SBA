@@ -16,12 +16,12 @@ http.TIMEOUT = 5
 --================ CONFIG =================--
 
 local TTS_URL      = "http://127.0.0.1:5006/tts"
-local SBA_API_URL  = "http://10.11.1.132:2123/api/ivr/info?number="
+local SBA_API_URL  = "http://10.11.1.132:2323/api/ivr/info?number="
 local FS_DOMAIN    = "10.11.1.135"
 
 local SUPORTE_BRIDGE_1 = "sofia/gateway/29cd5aec-392c-4b1a-9fbc-022f99e52822/923190888"
 local SUPORTE_BRIDGE_2 = "sofia/gateway/8d89f777-3345-4b0a-8386-94bb7ce89368/923190888"
-local GATEWAY_UUID     = "sofia/gateway/c5c0b204-6528-48e5-8b57-51f871c32334"
+local GATEWAY_UUID     = "sofia/gateway/48e7015d-675a-4e32-8985-031fd26e7a41"
 
 local BASE_DIR = "/var/log/freeswitch/segment_sba"
 local HISTORY_DIR = BASE_DIR .. "/history"
@@ -128,7 +128,7 @@ if tonumber(api_code) ~= 200 or not data then
     return
 end
 
-if not data.manager_name or not data.manager_extension then
+if not data.operator_name or not data.operator_extension then
     session:execute("bridge", SUPORTE_BRIDGE_1)
     if session:ready() then session:execute("bridge", SUPORTE_BRIDGE_2) end
 
@@ -141,10 +141,9 @@ end
 
 --================ TTS =================--
 
-local texto =
-    "Bem-vindo ao Standard Bank Angola. " ..
-    "A sua chamada está a ser encaminhada para o seu gestor, " ..
-    data.manager_name .. ". Por favor, aguarde."
+local texto = data.message or
+    ("Bem-vindo. A sua chamada está a ser encaminhada para o seu operador, " ..
+     data.operator_name .. ". Por favor, aguarde.")
 
 local wav = tts(texto)
 if wav then
@@ -157,10 +156,10 @@ end
 session:setVariable("caller_id_name", data.client_name or "Cliente")
 
 local destino
-if #tostring(data.manager_extension) >= 5 then
-    destino = GATEWAY_UUID .. "/" .. data.manager_extension
+if #tostring(data.operator_extension) >= 5 then
+    destino = GATEWAY_UUID .. "/" .. data.operator_extension
 else
-    destino = "user/" .. data.manager_extension .. "@" .. FS_DOMAIN
+    destino = "user/" .. data.operator_extension .. "@" .. FS_DOMAIN
 end
 
 session:execute("bridge", destino)
@@ -188,7 +187,7 @@ write_history(
     numero,
     data.client_name,
     data.segment,
-    data.manager_name,
+    data.operator_name,
     estado,
     ringsec,
     billsec,
