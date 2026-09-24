@@ -149,11 +149,19 @@ local wav = tts(texto)
 if wav then
     play_wav(wav)
     os.remove(wav)
+    session:sleep(1000)
 end
 
 --================ DESTINO =================--
 
-session:setVariable("caller_id_name", data.client_name or "Cliente")
+local nome_cliente = data.client_name or "Cliente"
+
+-- Ajusta Caller ID e envia headers compatíveis com 3CX
+session:setVariable("caller_id_name", nome_cliente)
+session:setVariable("effective_caller_id_name", nome_cliente)
+session:setVariable("effective_caller_id_number", numero)
+session:setVariable("sip_h_P-Asserted-Identity", "\"" .. nome_cliente .. "\" <sip:" .. numero .. "@" .. FS_DOMAIN .. ">")
+session:setVariable("sip_h_Remote-Party-ID", "\"" .. nome_cliente .. "\" <sip:" .. numero .. "@" .. FS_DOMAIN .. ">;party=calling;id-type=subscriber;screen=yes")
 
 local destino
 if #tostring(data.operator_extension) >= 5 then
@@ -162,6 +170,7 @@ else
     destino = "user/" .. data.operator_extension .. "@" .. FS_DOMAIN
 end
 
+session:setVariable("ringback", "/var/lib/freeswitch/recordings/10.11.1.135/SBA/Hold_SBA.wav")
 session:execute("bridge", destino)
 
 --================ RESULTADO =================--
