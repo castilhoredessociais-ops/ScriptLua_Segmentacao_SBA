@@ -12,7 +12,7 @@ Reorganização de 2026-09-07: motor TTS dedicado, isolado do self-service/Sonan
 
 - **Porta TTS dedicada:** 5006 (antes partilhava a 5004 com `ivr_selfservice.lua`/`ivr_saldo.lua` via `gcloud-tts-banking.service`)
 - **Credencial GCP:** `/opt/APIs_keys/sba-segment-ucallkey.json` (projecto `sba-segment`, service account `sba-segmentacao@sba-segment.iam.gserviceaccount.com`)
-- **API de dados do cliente:** `http://10.11.1.132:2123/api/ivr/info?number=` (inalterada)
+- **API de dados do cliente:** `http://10.11.1.132:2323/api/ivr/info?number=` (porta corrigida, era 2123 nesta nota)
 - **Logs/histórico:** `/var/log/freeswitch/segment_sba/history/YYYY-MM-DD.log`
 
 ## Porquê a mudança
@@ -21,7 +21,17 @@ O `gcloud-tts.service` original (porta 5002, `server.py`) morreu em algum moment
 
 ## Estado do dialplan
 
-**Ainda sem DDI atribuído** — nenhuma entrada do dialplan do FusionPBX aponta para este script (confirmado por consulta a `v_dialplan_details`, 2026-09-07). Falta criar a rota de entrada quando o número for definido.
+**Em produção desde 2026-09-07**, testado de ponta a ponta com chamada real. DID confirmado: `923120101`.
+
+## Caller-ID, ringback e pausa (adicionado 2026-09-2x)
+
+- O script envia `sip_h_P-Asserted-Identity` e `sip_h_Remote-Party-ID` com o nome do cliente, para o 3CX mostrar o nome (não só o número) no ecrã do gestor. Depende do mapeamento `ParameterIn`/`ParameterOut` correcto no modelo do tronco 3CX (ver [[ucall-sba-segmentacao-status]] na memória do Eco para o fix do lado do 3CX).
+- `session:sleep(1000)` logo após a mensagem de boas-vindas, antes de seguir para o encaminhamento — pausa de 1s para não soar corrido.
+- `session:setVariable("ringback", "/var/lib/freeswitch/recordings/10.11.1.135/SBA/Hold_SBA.wav")` antes do `bridge` para o gestor — o cliente ouve este áudio (spot SBA) enquanto a chamada toca na extensão do gestor, em vez de silêncio. Ficheiro tem de pertencer a `www-data:www-data` para o script (que corre como esse utilizador) o conseguir ler.
+
+## Menu "gestor não atende" (Call Flow App, separado deste script)
+
+Quando o gestor não atende, quem trata a chamada a partir daí **deixa de ser este script Lua** — passa para uma Call Flow App do 3CX (`Gestor_Indisponivel`, projecto CFD separado) que toca um aviso, oferece "prima 1" (linha geral) ou "prima 2" (encerrar), com repetição automática (3 tentativas) e mensagem de despedida. Ver pasta do projecto CFD para o `.cfdproj`/`Main.flow`/áudios/pacote de build.
 
 ## Ficheiros arquivados (não apagados)
 
